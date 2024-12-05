@@ -6,12 +6,11 @@ import (
 	"attendance_uniapp/utils"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"reflect"
 )
 
 // 设置通用查询条件
 var userModel interface{}
-var passwordField string
+var userPwd string
 
 func Login(role string) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -29,29 +28,23 @@ func Login(role string) gin.HandlerFunc {
 
 		// 根据角色选择模型和密码字段
 		if role == "student" {
-			userModel = &models.Student{}
-			passwordField = "StudentPwd"
-		} else if role == "teacher" {
-			userModel = &models.Teacher{}
-			passwordField = "TeacherPwd"
+			user, err := models.GetStudentById(input.UserId)
+			if err != nil {
+				ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid " + role + " ID or password"})
+				return
+			}
+			userPwd = user.StudentPwd
 		} else {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role"})
-			return
+			user, err := models.GetTeacherById(input.UserId)
+			if err != nil {
+				ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid " + role + " ID or password"})
+				return
+			}
+			userPwd = user.TeacherPwd
 		}
-
-		// 查询用户
-		err := initializer.DB.Where(role+"_id = ?", input.UserId).First(userModel).Error
-		if err != nil {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid " + role + " ID or password"})
-			return
-		}
-
-		// 获取用户模型的密码字段，使用反射
-		userValue := reflect.ValueOf(userModel).Elem()
-		passwordHash := userValue.FieldByName(passwordField).String()
 
 		// 验证密码
-		if !utils.CheckPassword(input.Pwd, passwordHash) {
+		if !utils.CheckPassword(input.Pwd, userPwd) {
 			ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid " + role + " ID or password"})
 			return
 		}
@@ -71,9 +64,9 @@ func Login(role string) gin.HandlerFunc {
 func ChangePwd(ctx *gin.Context) {
 	// input结构体 获取请求参数
 	var input struct {
-		OldPwd         string `json:"old_pwd"`
-		NewPwd         string `json:"new_pwd"`
-		RepeatedNewPwd string `json:"repeated_new_pwd"`
+		OldPwd         string `json:"old_pwd" binding:"required"`
+		NewPwd         string `json:"new_pwd" binding:"required"`
+		RepeatedNewPwd string `json:"repeated_new_pwd" binding:"required"`
 	}
 
 	if err := ctx.ShouldBindJSON(&input); err != nil {
@@ -92,34 +85,29 @@ func ChangePwd(ctx *gin.Context) {
 
 	// 根据角色选择模型和密码字段
 	if role == "student" {
-		userModel = &models.Student{}
-		passwordField = "StudentPwd"
-	} else if role == "teacher" {
-		userModel = &models.Teacher{}
-		passwordField = "TeacherPwd"
+		user, err := models.GetStudentById(userId)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid " + role + " ID or password"})
+			return
+		}
+		userPwd = user.StudentPwd
 	} else {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid role"})
-		return
+		user, err := models.GetTeacherById(userId)
+		if err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid " + role + " ID or password"})
+			return
+		}
+		userPwd = user.TeacherPwd
 	}
-
-	// 查询用户
-	if err := initializer.DB.Where(role+"_id = ?", userId).First(userModel).Error; err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid JWT"})
-		return
-	}
-
-	// 获取用户模型的密码字段，使用反射
-	userValue := reflect.ValueOf(userModel).Elem()
-	passwordHash := userValue.FieldByName(passwordField).String()
 
 	// 验证密码
-	if !utils.CheckPassword(input.OldPwd, passwordHash) {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid " + role + " ID or password"})
+	if !utils.CheckPassword(input.OldPwd, userPwd) {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"error": "wrong password"})
 		return
 	}
 	// 更新密码
 	toUpdateHashedPwd, _ := utils.HashPassword(input.NewPwd)
-	if err := initializer.DB.Model(userModel).Update(passwordField, toUpdateHashedPwd).Error; err != nil {
+	if err := initializer.DB.Model(userModel).Update(role+"Pwd", toUpdateHashedPwd).Error; err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update password"})
 		return
 	}
