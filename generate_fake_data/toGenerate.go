@@ -60,7 +60,7 @@ func main() {
 		teacherFakeHashedPwd = append(teacherFakeHashedPwd, hashedPassword)
 	}
 	// 将假数据存入数据库
-	for index, _ := range StudentFakeIds {
+	for index := range StudentFakeIds {
 		//随机二选一密码
 		randomIndex := rand.Intn(len(studentFakeHashedPwd))
 		initializer.DB.Create(&models.Student{StudentId: StudentFakeIds[index], StudentName: faker.ChineseName(), StudentPwd: studentFakeHashedPwd[randomIndex]})
